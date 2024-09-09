@@ -26,11 +26,17 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/ente-io/stacktrace"
 	"github.com/spf13/viper"
 )
+
+var configDefaults = map[string]any{
+	"credentials-file": "credentials.yaml",
+	"log-format":       "json",
+}
 
 func ConfigureViper(environment string) error {
 	// Ask Viper to read in values from the environment. These values will
@@ -41,17 +47,17 @@ func ConfigureViper(environment string) error {
 	// Ask Viper to look for underscores (instead of dots) for nested configs.
 	viper.SetEnvKeyReplacer(strings.NewReplacer(`.`, `_`))
 
-	viper.SetConfigFile("configurations/" + environment + ".yaml")
+	for k, v := range configDefaults {
+		viper.SetDefault(k, v)
+	}
+
+	viper.SetConfigFile(filepath.Join("configurations", environment+".yaml"))
 	err := viper.ReadInConfig()
 	if err != nil {
 		return err
 	}
 
-	credentialsFile := viper.GetString("credentials-file")
-	if credentialsFile == "" {
-		credentialsFile = "credentials.yaml"
-	}
-	err = mergeConfigFileIfExists(credentialsFile)
+	err = mergeConfigFileIfExists(viper.GetString("credentials-file"))
 	if err != nil {
 		return err
 	}

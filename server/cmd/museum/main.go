@@ -767,18 +767,22 @@ func setupLogger(environment string) {
 		funcName := s[len(s)-1]
 		return funcName, fmt.Sprintf("%s:%d", path.Base(f.File), f.Line)
 	}
-	logFile := viper.GetString("log-file")
-	if environment == "local" && logFile == "" {
+
+	if format := viper.GetString("log-format"); format == "json" {
+		log.SetFormatter(&log.JSONFormatter{
+			CallerPrettyfier: callerPrettyfier,
+			PrettyPrint:      false,
+		})
+	} else if environment == "local" || format == "text" {
 		log.SetFormatter(&log.TextFormatter{
 			CallerPrettyfier: callerPrettyfier,
 			DisableQuote:     true,
 			ForceColors:      true,
 		})
-	} else {
-		log.SetFormatter(&log.JSONFormatter{
-			CallerPrettyfier: callerPrettyfier,
-			PrettyPrint:      false,
-		})
+	}
+
+	logFile := viper.GetString("log-file")
+	if environment != "local" && logFile != "" {
 		log.SetOutput(&lumberjack.Logger{
 			Filename: logFile,
 			MaxSize:  100,
