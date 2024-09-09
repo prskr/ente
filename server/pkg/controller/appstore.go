@@ -3,18 +3,19 @@ package controller
 import (
 	"context"
 	"fmt"
-	"github.com/ente-io/museum/pkg/controller/commonbilling"
-	"github.com/prometheus/common/log"
 	"strconv"
 	"strings"
+
+	"github.com/ente-io/museum/pkg/controller/commonbilling"
 
 	"github.com/ente-io/stacktrace"
 	"github.com/gin-contrib/requestid"
 	"github.com/gin-gonic/gin"
-	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 
 	"github.com/awa/go-iap/appstore"
+
 	"github.com/ente-io/museum/ente"
 	"github.com/ente-io/museum/pkg/repo"
 	"github.com/ente-io/museum/pkg/utils/array"
@@ -56,7 +57,7 @@ var SubsUpdateNotificationTypes = []string{string(appstore.NotificationTypeDidCh
 
 // HandleNotification handles an AppStore notification
 func (c *AppStoreController) HandleNotification(ctx *gin.Context, notification appstore.SubscriptionNotification) error {
-	logger := logrus.WithFields(logrus.Fields{
+	logger := log.WithFields(log.Fields{
 		"req_id": requestid.Get(ctx),
 	})
 	purchase, err := c.verifyAppStoreSubscription(notification.UnifiedReceipt.LatestReceipt)

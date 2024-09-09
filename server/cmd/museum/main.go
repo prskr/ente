@@ -5,9 +5,6 @@ import (
 	"database/sql"
 	b64 "encoding/base64"
 	"fmt"
-	"github.com/ente-io/museum/ente/base"
-	"github.com/ente-io/museum/pkg/controller/file_copy"
-	"github.com/ente-io/museum/pkg/controller/filedata"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,6 +13,10 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/ente-io/museum/ente/base"
+	"github.com/ente-io/museum/pkg/controller/file_copy"
+	"github.com/ente-io/museum/pkg/controller/filedata"
 
 	"github.com/ente-io/museum/pkg/repo/two_factor_recovery"
 
@@ -30,6 +31,24 @@ import (
 
 	"github.com/GoKillers/libsodium-go/sodium"
 	"github.com/dlmiddlecote/sqlstats"
+	"github.com/gin-contrib/gzip"
+	"github.com/gin-contrib/requestid"
+	"github.com/gin-contrib/timeout"
+	"github.com/gin-gonic/gin"
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
+	_ "github.com/lib/pq"
+	"github.com/patrickmn/go-cache"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/robfig/cron/v3"
+	log "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
+	ginprometheus "github.com/zsais/go-gin-prometheus"
+	"gopkg.in/natefinch/lumberjack.v2"
+
 	"github.com/ente-io/museum/ente/jwt"
 	"github.com/ente-io/museum/pkg/api"
 	"github.com/ente-io/museum/pkg/controller"
@@ -61,23 +80,6 @@ import (
 	"github.com/ente-io/museum/pkg/utils/config"
 	"github.com/ente-io/museum/pkg/utils/s3config"
 	timeUtil "github.com/ente-io/museum/pkg/utils/time"
-	"github.com/gin-contrib/gzip"
-	"github.com/gin-contrib/requestid"
-	"github.com/gin-contrib/timeout"
-	"github.com/gin-gonic/gin"
-	"github.com/golang-migrate/migrate/v4"
-	"github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
-	_ "github.com/lib/pq"
-	"github.com/patrickmn/go-cache"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/robfig/cron/v3"
-	log "github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
-	ginprometheus "github.com/zsais/go-gin-prometheus"
-	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 func main() {
@@ -364,11 +366,9 @@ func main() {
 	// note: the recover middleware must be in the last
 
 	server.Use(requestid.New(
-		requestid.Config{
-			Generator: func() string {
-				return base.ServerReqID()
-			},
-		}),
+		requestid.WithGenerator(func() string {
+			return base.ServerReqID()
+		})),
 		middleware.Logger(urlSanitizer), cors(), gzip.Gzip(gzip.DefaultCompression), middleware.PanicRecover())
 
 	publicAPI := server.Group("/")
