@@ -8,14 +8,15 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ente-io/stacktrace"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+
 	"github.com/ente-io/museum/ente"
 	"github.com/ente-io/museum/ente/jwt"
 	"github.com/ente-io/museum/pkg/controller/user"
 	"github.com/ente-io/museum/pkg/utils/auth"
 	"github.com/ente-io/museum/pkg/utils/handler"
-	"github.com/ente-io/stacktrace"
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 // UserHandler exposes request handlers for all user related requests
@@ -520,7 +521,7 @@ func (h *UserHandler) GetActiveSessions(c *gin.Context) {
 func (h *UserHandler) TerminateSession(c *gin.Context) {
 	userID := auth.GetUserID(c.Request.Header)
 	token := c.Query("token")
-	err := h.UserController.TerminateSession(userID, token)
+	err := h.UserController.TerminateSession(c, userID, token)
 	if err != nil {
 		handler.Error(c, stacktrace.Propagate(err, ""))
 		return

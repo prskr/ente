@@ -1,6 +1,7 @@
 package user
 
 import (
+	"context"
 	"database/sql"
 	"encoding/base64"
 	"errors"
@@ -9,19 +10,21 @@ import (
 
 	"github.com/ente-io/museum/pkg/utils/random"
 
-	"github.com/ente-io/museum/pkg/utils/config"
-	"github.com/ente-io/museum/pkg/utils/network"
 	"github.com/gin-contrib/requestid"
 	"github.com/spf13/viper"
+
+	"github.com/ente-io/museum/pkg/utils/config"
+	"github.com/ente-io/museum/pkg/utils/network"
+
+	"github.com/ente-io/stacktrace"
+	"github.com/gin-gonic/gin"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/ente-io/museum/ente"
 	"github.com/ente-io/museum/pkg/utils/auth"
 	"github.com/ente-io/museum/pkg/utils/crypto"
 	emailUtil "github.com/ente-io/museum/pkg/utils/email"
 	"github.com/ente-io/museum/pkg/utils/time"
-	"github.com/ente-io/stacktrace"
-	"github.com/gin-gonic/gin"
-	log "github.com/sirupsen/logrus"
 )
 
 type HardCodedOTTEmail struct {
@@ -278,7 +281,7 @@ func (c *UserController) UpdateEmail(ctx *gin.Context, userID int64, email strin
 func (c *UserController) Logout(ctx *gin.Context) error {
 	token := auth.GetToken(ctx)
 	userID := auth.GetUserID(ctx.Request.Header)
-	return c.TerminateSession(userID, token)
+	return c.TerminateSession(ctx, userID, token)
 }
 
 // GetActiveSessions returns the list of active tokens for userID
@@ -291,9 +294,9 @@ func (c *UserController) GetActiveSessions(context *gin.Context, userID int64) (
 }
 
 // TerminateSession removes the token for a user from cache and database
-func (c *UserController) TerminateSession(userID int64, token string) error {
-	c.Cache.Delete(fmt.Sprintf("%s:%s", ente.Photos, token))
-	c.Cache.Delete(fmt.Sprintf("%s:%s", ente.Auth, token))
+func (c *UserController) TerminateSession(ctx context.Context, userID int64, token string) error {
+	_ = c.Cache.Unset(ctx, fmt.Sprintf("%s:%s", ente.Photos, token))
+	_ = c.Cache.Unset(ctx, fmt.Sprintf("%s:%s", ente.Auth, token))
 	return stacktrace.Propagate(c.UserAuthRepo.RemoveToken(userID, token), "")
 }
 

@@ -3,12 +3,14 @@ package controller
 import (
 	"context"
 	"errors"
+
+	"github.com/ente-io/stacktrace"
+
 	"github.com/ente-io/museum/ente"
 	bonus "github.com/ente-io/museum/ente/storagebonus"
 	"github.com/ente-io/museum/pkg/controller/storagebonus"
 	"github.com/ente-io/museum/pkg/controller/usercache"
 	"github.com/ente-io/museum/pkg/repo"
-	"github.com/ente-io/stacktrace"
 )
 
 // UsageController exposes functions which can be used to check around storage
@@ -30,7 +32,7 @@ func (c *UsageController) CanUploadFile(ctx context.Context, userID int64, size 
 	// If app is Locker, limit to MaxLockerFiles files
 	if app == ente.Locker {
 		// Get file count
-		if fileCount, err := c.UserCacheCtrl.GetUserFileCountWithCache(userID, app); err != nil {
+		if fileCount, err := c.UserCacheCtrl.GetUserFileCountWithCache(ctx, userID, app); err != nil {
 			if fileCount >= MaxLockerFiles {
 				return stacktrace.Propagate(ente.ErrFileLimitReached, "")
 			}

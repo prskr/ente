@@ -4,25 +4,27 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/sirupsen/logrus"
 	"net/http"
 	"strconv"
+
+	"github.com/sirupsen/logrus"
 
 	"github.com/ente-io/museum/ente/jwt"
 	"github.com/ente-io/museum/pkg/utils/network"
 
+	"github.com/gin-gonic/gin"
+	"github.com/spf13/viper"
+
+	"github.com/ente-io/museum/ente/cache"
 	"github.com/ente-io/museum/pkg/controller/user"
 	"github.com/ente-io/museum/pkg/repo"
 	"github.com/ente-io/museum/pkg/utils/auth"
-	"github.com/gin-gonic/gin"
-	"github.com/patrickmn/go-cache"
-	"github.com/spf13/viper"
 )
 
 // AuthMiddleware intercepts and authenticates incoming requests
 type AuthMiddleware struct {
 	UserAuthRepo   *repo.UserAuthRepository
-	Cache          *cache.Cache
+	Cache          cache.TypedKeyValueCache[*int64]
 	UserController *user.UserController
 }
 
@@ -44,9 +46,10 @@ func (m *AuthMiddleware) TokenAuthMiddleware(jwtClaimScope *jwt.ClaimScope) gin.
 			isJWT = true
 			cacheKey = fmt.Sprintf("%s:%s:%s", app, token, *jwtClaimScope)
 		}
-		userID, found := m.Cache.Get(cacheKey)
-		var err error
-		if !found {
+		rawUserID, err := m.Cache.Get(c, cacheKey)
+
+		if err != nil {
+			var userID int64
 			if isJWT {
 				userID, err = m.UserController.ValidateJWTToken(token, *jwtClaimScope)
 			} else {
@@ -67,13 +70,14 @@ func (m *AuthMiddleware) TokenAuthMiddleware(jwtClaimScope *jwt.ClaimScope) gin.
 				// skip updating last used for requests routed via CF worker
 				if !network.IsCFWorkerIP(ip) {
 					go func() {
-						_ = m.UserAuthRepo.UpdateLastUsedAt(userID.(int64), token, ip, userAgent)
+						_ = m.UserAuthRepo.UpdateLastUsedAt(userID, token, ip, userAgent)
 					}()
 				}
 			}
-			m.Cache.Set(cacheKey, userID, cache.DefaultExpiration)
+			rawUserID = &userID
+			_ = m.Cache.Set(c, cacheKey, rawUserID)
 		}
-		c.Request.Header.Set("X-Auth-User-ID", strconv.FormatInt(userID.(int64), 10))
+		c.Request.Header.Set("X-Auth-User-ID", strconv.FormatInt(*rawUserID, 10))
 		c.Next()
 	}
 }

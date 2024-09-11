@@ -76,7 +76,7 @@ func PanicRecover() gin.HandlerFunc {
 				if fmt.Sprintf("%v", err) == "client disconnected" {
 					// https://github.com/gin-gonic/gin/issues/2279#issuecomment-768349478
 					logWithAttributes.Warn("Client request cancelled")
-					c.Request.Context().Done()
+					c.Done()
 				} else {
 					logWithAttributes.Error("Recovery from Panic")
 					c.AbortWithStatus(http.StatusInternalServerError)

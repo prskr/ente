@@ -14,17 +14,19 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ente-io/museum/ente"
 	"github.com/ente-io/museum/ente/base"
+	"github.com/ente-io/museum/ente/cast"
 	"github.com/ente-io/museum/pkg/controller/file_copy"
 	"github.com/ente-io/museum/pkg/controller/filedata"
 
 	"github.com/ente-io/museum/pkg/repo/two_factor_recovery"
 
-	"github.com/ente-io/museum/pkg/controller/cast"
+	castCtrl "github.com/ente-io/museum/pkg/controller/cast"
 
 	"github.com/ente-io/museum/pkg/controller/commonbilling"
 
-	cache2 "github.com/ente-io/museum/ente/cache"
+	"github.com/ente-io/museum/ente/cache"
 	"github.com/ente-io/museum/pkg/controller/discord"
 	"github.com/ente-io/museum/pkg/controller/offer"
 	"github.com/ente-io/museum/pkg/controller/usercache"
@@ -39,7 +41,6 @@ import (
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	_ "github.com/lib/pq"
-	"github.com/patrickmn/go-cache"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -178,8 +179,6 @@ func main() {
 	}
 	embeddingRepo := &embedding.Repository{DB: db}
 
-	authCache := cache.New(1*time.Minute, 15*time.Minute)
-	accessTokenCache := cache.New(1*time.Minute, 15*time.Minute)
 	discordController := discord.NewDiscordController(userRepo, hostName, environment)
 	rateLimiter := middleware.NewRateLimitMiddleware(discordController, 1000, 1*time.Second)
 	defer rateLimiter.Stop()
@@ -190,7 +189,26 @@ func main() {
 		NotificationHistoryRepo: notificationHistoryRepo,
 	}
 
-	userCache := cache2.NewUserCache()
+	var kvCache cache.KeyValueCache
+
+	switch cacheType := viper.GetString("cache.type"); cacheType {
+	case "redis":
+		redisCache, err := cache.NewRedisKeyValue(viper.GetDuration("cache.defaultExpiration"), viper.GetString("cache.connectionString"))
+		if err != nil {
+			panic(err)
+		}
+
+		defer func() {
+			_ = redisCache.Close()
+		}()
+		kvCache = redisCache
+	case "memory":
+		kvCache = cache.NewInMemoryKeyValue(viper.GetDuration("cache.defaultExpiration"), 15*time.Minute)
+	default:
+		panic(fmt.Sprintf("unkown cache type: %s", cacheType))
+	}
+
+	userCache := cache.NewUserCache(kvCache.WithPrefix("user"))
 	userCacheCtrl := &usercache.Controller{UserCache: userCache, FileRepo: fileRepo,
 		UsageRepo: usageRepo, TrashRepo: trashRepo,
 		StoreBonusRepo: storagBonusRepo}
@@ -313,6 +331,8 @@ func main() {
 		Repo: kexRepo,
 	}
 
+	authCache := kvCache.WithPrefix("auth")
+
 	userController := user.NewUserController(
 		userRepo,
 		usageRepo,
@@ -335,7 +355,6 @@ func main() {
 		discordController,
 		mailingListsController,
 		pushController,
-		userCache,
 		userCacheCtrl,
 	)
 
@@ -344,12 +363,12 @@ func main() {
 		UserRepo: userRepo,
 	}
 
-	authMiddleware := middleware.AuthMiddleware{UserAuthRepo: userAuthRepo, Cache: authCache, UserController: userController}
+	authMiddleware := middleware.AuthMiddleware{UserAuthRepo: userAuthRepo, Cache: cache.NewTypedKeyValueCache[*int64](authCache), UserController: userController}
 	accessTokenMiddleware := middleware.AccessTokenMiddleware{
 		PublicCollectionRepo: publicCollectionRepo,
 		PublicCollectionCtrl: publicCollectionCtrl,
 		CollectionRepo:       collectionRepo,
-		Cache:                accessTokenCache,
+		Cache:                cache.NewTypedKeyValueCache[ente.PublicCollectionSummary](kvCache.WithPrefix("access_token")),
 		BillingCtrl:          billingController,
 		DiscordController:    discordController,
 	}
@@ -558,8 +577,8 @@ func main() {
 
 	castAPI := server.Group("/cast")
 
-	castCtrl := cast.NewController(&castDb, accessCtrl)
-	castMiddleware := middleware.CastMiddleware{CastCtrl: castCtrl, Cache: authCache}
+	castCtrl := castCtrl.NewController(&castDb, accessCtrl)
+	castMiddleware := middleware.CastMiddleware{CastCtrl: castCtrl, Cache: cache.NewTypedKeyValueCache[*cast.AuthContext](authCache)}
 	castAPI.Use(rateLimiter.GlobalRateLimiter(), castMiddleware.CastAuthMiddleware())
 
 	castHandler := &api.CastHandler{

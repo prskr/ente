@@ -7,7 +7,12 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/ente-io/stacktrace"
+	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
+
 	"github.com/ente-io/museum/ente"
+	"github.com/ente-io/museum/ente/cache"
 	"github.com/ente-io/museum/pkg/controller"
 	"github.com/ente-io/museum/pkg/controller/discord"
 	"github.com/ente-io/museum/pkg/repo"
@@ -15,10 +20,6 @@ import (
 	"github.com/ente-io/museum/pkg/utils/auth"
 	"github.com/ente-io/museum/pkg/utils/network"
 	"github.com/ente-io/museum/pkg/utils/time"
-	"github.com/ente-io/stacktrace"
-	"github.com/gin-gonic/gin"
-	"github.com/patrickmn/go-cache"
-	"github.com/sirupsen/logrus"
 )
 
 var passwordWhiteListedURLs = []string{"/public-collection/info", "/public-collection/report-abuse", "/public-collection/verify-password"}
@@ -29,7 +30,7 @@ type AccessTokenMiddleware struct {
 	PublicCollectionRepo *repo.PublicCollectionRepository
 	PublicCollectionCtrl *controller.PublicCollectionController
 	CollectionRepo       *repo.CollectionRepository
-	Cache                *cache.Cache
+	Cache                cache.TypedKeyValueCache[ente.PublicCollectionSummary]
 	BillingCtrl          *controller.BillingController
 	DiscordController    *discord.DiscordController
 }
@@ -46,12 +47,14 @@ func (m *AccessTokenMiddleware) AccessTokenAuthMiddleware(urlSanitizer func(_ *g
 		}
 		clientIP := network.GetClientIP(c)
 		userAgent := c.GetHeader("User-Agent")
+
 		var publicCollectionSummary ente.PublicCollectionSummary
-		var err error
 
 		cacheKey := computeHashKeyForList([]string{accessToken, clientIP, userAgent}, ":")
-		cachedValue, cacheHit := m.Cache.Get(cacheKey)
-		if !cacheHit {
+		cachedValue, cacheGetErr := m.Cache.Get(c, cacheKey)
+
+		if cacheGetErr != nil {
+			var err error
 			publicCollectionSummary, err = m.PublicCollectionRepo.GetCollectionSummaryByToken(c, accessToken)
 			if err != nil {
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
@@ -62,7 +65,7 @@ func (m *AccessTokenMiddleware) AccessTokenAuthMiddleware(urlSanitizer func(_ *g
 				return
 			}
 			// validate if user still has active paid subscription
-			if err = m.validateOwnersSubscription(publicCollectionSummary.CollectionID); err != nil {
+			if err := m.validateOwnersSubscription(publicCollectionSummary.CollectionID); err != nil {
 				logrus.WithError(err).Warn("failed to verify active paid subscription")
 				c.AbortWithStatusJSON(http.StatusGone, gin.H{"error": "no active subscription"})
 				return
@@ -80,7 +83,7 @@ func (m *AccessTokenMiddleware) AccessTokenAuthMiddleware(urlSanitizer func(_ *g
 				return
 			}
 		} else {
-			publicCollectionSummary = cachedValue.(ente.PublicCollectionSummary)
+			publicCollectionSummary = cachedValue
 		}
 
 		if publicCollectionSummary.ValidTill > 0 && // expiry time is defined, 0 indicates no expiry
@@ -92,15 +95,15 @@ func (m *AccessTokenMiddleware) AccessTokenAuthMiddleware(urlSanitizer func(_ *g
 		// checks password protected public collection
 		if publicCollectionSummary.PassHash != nil && *publicCollectionSummary.PassHash != "" {
 			reqPath := urlSanitizer(c)
-			if err = m.validatePassword(c, reqPath, publicCollectionSummary); err != nil {
+			if err := m.validatePassword(c, reqPath, publicCollectionSummary); err != nil {
 				logrus.WithError(err).Warn("password validation failed")
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err})
 				return
 			}
 		}
 
-		if !cacheHit {
-			m.Cache.Set(cacheKey, publicCollectionSummary, cache.DefaultExpiration)
+		if cacheGetErr != nil {
+			_ = m.Cache.Set(c, cacheKey, publicCollectionSummary)
 		}
 
 		c.Set(auth.PublicAccessKey, ente.PublicAccessContext{

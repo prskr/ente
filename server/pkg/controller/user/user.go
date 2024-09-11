@@ -3,12 +3,19 @@ package user
 import (
 	"errors"
 	"fmt"
-	"github.com/ente-io/museum/pkg/repo/two_factor_recovery"
 	"strings"
 
-	cache2 "github.com/ente-io/museum/ente/cache"
+	"github.com/ente-io/museum/ente/cache"
+	"github.com/ente-io/museum/pkg/repo/two_factor_recovery"
+
 	"github.com/ente-io/museum/pkg/controller/discord"
 	"github.com/ente-io/museum/pkg/controller/usercache"
+
+	"github.com/ente-io/stacktrace"
+	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt"
+	"github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 
 	"github.com/ente-io/museum/ente"
 	"github.com/ente-io/museum/pkg/controller"
@@ -20,12 +27,6 @@ import (
 	"github.com/ente-io/museum/pkg/utils/billing"
 	"github.com/ente-io/museum/pkg/utils/crypto"
 	"github.com/ente-io/museum/pkg/utils/email"
-	"github.com/ente-io/stacktrace"
-	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt"
-	"github.com/patrickmn/go-cache"
-	"github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
 )
 
 // UserController exposes request handlers for all user related requests
@@ -50,11 +51,10 @@ type UserController struct {
 	HashingKey             []byte
 	SecretEncryptionKey    []byte
 	JwtSecret              []byte
-	Cache                  *cache.Cache // refers to the auth token cache
+	Cache                  cache.KeyValueCache // refers to the auth token cache
 	HardCodedOTT           HardCodedOTT
 	roadmapURLPrefix       string
 	roadmapSSOSecret       string
-	UserCache              *cache2.UserCache
 	UserCacheController    *usercache.Controller
 }
 
@@ -111,14 +111,13 @@ func NewUserController(
 	billingRepo *repo.BillingRepository,
 	secretEncryptionKeyBytes []byte,
 	hashingKeyBytes []byte,
-	authCache *cache.Cache,
+	authCache cache.KeyValueCache,
 	jwtSecretBytes []byte,
 	billingController *controller.BillingController,
 	familyController *family.Controller,
 	discordController *discord.DiscordController,
 	mailingListsController *controller.MailingListsController,
 	pushController *controller.PushController,
-	userCache *cache2.UserCache,
 	userCacheController *usercache.Controller,
 ) *UserController {
 	return &UserController{
@@ -146,7 +145,6 @@ func NewUserController(
 		HardCodedOTT:           ReadHardCodedOTTFromConfig(),
 		roadmapURLPrefix:       viper.GetString("roadmap.url-prefix"),
 		roadmapSSOSecret:       viper.GetString("roadmap.sso-secret"),
-		UserCache:              userCache,
 		UserCacheController:    userCacheController,
 	}
 }

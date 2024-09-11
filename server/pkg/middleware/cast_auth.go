@@ -2,16 +2,19 @@ package middleware
 
 import (
 	"fmt"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+
+	cache2 "github.com/ente-io/museum/ente/cache"
+	"github.com/ente-io/museum/ente/cast"
 	castCtrl "github.com/ente-io/museum/pkg/controller/cast"
 	"github.com/ente-io/museum/pkg/utils/auth"
-	"github.com/gin-gonic/gin"
-	"github.com/patrickmn/go-cache"
-	"net/http"
 )
 
 // CastMiddleware intercepts and authenticates incoming requests
 type CastMiddleware struct {
-	Cache    *cache.Cache
+	Cache    cache2.TypedKeyValueCache[*cast.AuthContext]
 	CastCtrl *castCtrl.Controller
 }
 
@@ -28,15 +31,15 @@ func (m *CastMiddleware) CastAuthMiddleware() gin.HandlerFunc {
 		}
 		app := auth.GetApp(c)
 		cacheKey := fmt.Sprintf("%s:%s:%s", app, token, "cast")
-		cachedCastCtx, found := m.Cache.Get(cacheKey)
-		if !found {
+		cachedCastCtx, err := m.Cache.Get(c, cacheKey)
+		if err != nil {
 			castCtx, err := m.CastCtrl.GetCollectionAndCasterIDForToken(c, token)
 			if err != nil {
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 				return
 			}
 			c.Set(auth.CastContext, castCtx)
-			m.Cache.Set(cacheKey, *castCtx, cache.DefaultExpiration)
+			_ = m.Cache.Set(c, cacheKey, castCtx)
 			c.Set(auth.CastContext, *castCtx)
 		} else {
 			c.Set(auth.CastContext, cachedCastCtx)
@@ -44,7 +47,7 @@ func (m *CastMiddleware) CastAuthMiddleware() gin.HandlerFunc {
 			go func() {
 				_, err := m.CastCtrl.GetCollectionAndCasterIDForToken(c, token)
 				if err != nil {
-					m.Cache.Delete(cacheKey)
+					_ = m.Cache.Unset(c, cacheKey)
 				}
 			}()
 		}

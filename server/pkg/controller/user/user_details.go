@@ -2,14 +2,16 @@ package user
 
 import (
 	"errors"
+
+	"github.com/ente-io/stacktrace"
+	"github.com/gin-gonic/gin"
+	"golang.org/x/sync/errgroup"
+
 	"github.com/ente-io/museum/ente"
 	"github.com/ente-io/museum/ente/details"
 	bonus "github.com/ente-io/museum/ente/storagebonus"
 	"github.com/ente-io/museum/pkg/utils/recover"
 	"github.com/ente-io/museum/pkg/utils/time"
-	"github.com/ente-io/stacktrace"
-	"github.com/gin-gonic/gin"
-	"golang.org/x/sync/errgroup"
 )
 
 func (c *UserController) GetUser(userID int64) (ente.User, error) {
@@ -74,7 +76,7 @@ func (c *UserController) GetDetailsV2(ctx *gin.Context, userID int64, fetchMemor
 
 	if fetchMemoryCount {
 		g.Go(func() error {
-			fCount, err := c.UserCacheController.GetUserFileCountWithCache(userID, app)
+			fCount, err := c.UserCacheController.GetUserFileCountWithCache(ctx, userID, app)
 			if err == nil {
 				fileCount = fCount
 			}

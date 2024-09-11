@@ -10,6 +10,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      cache:
+        condition: service_healthy
     environment:
       # Pass-in the config to connect to the DB and MinIO
       ENTE_CREDENTIALS_FILE: /credentials.yaml
@@ -82,6 +84,13 @@ services:
     networks:
       - internal
     entrypoint: sh /provision.sh
+
+  cache:
+    image: valkey/valkey:8.0-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: [ "CMD", "valkey-cli", "--raw", "incr", "ping" ]
 
 volumes:
   custom-logs:

@@ -2,11 +2,13 @@ package usercache
 
 import (
 	"context"
+
+	"github.com/ente-io/stacktrace"
+
 	"github.com/ente-io/museum/ente/cache"
 	bonus "github.com/ente-io/museum/ente/storagebonus"
 	"github.com/ente-io/museum/pkg/repo"
 	"github.com/ente-io/museum/pkg/repo/storagebonus"
-	"github.com/ente-io/stacktrace"
 )
 
 // Controller is the controller for the data cache.
@@ -22,7 +24,7 @@ type Controller struct {
 
 func (c *Controller) GetActiveStorageBonus(ctx context.Context, userID int64) (*bonus.ActiveStorageBonus, error) {
 	// Check if the value is present in the cache
-	if bonus, ok := c.UserCache.GetBonus(userID); ok {
+	if bonus, ok := c.UserCache.GetBonus(ctx, userID); ok {
 		// Cache hit, update the cache asynchronously
 		go func() {
 			_, _ = c.getAndCacheActiveStorageBonus(ctx, userID)
@@ -37,6 +39,6 @@ func (c *Controller) getAndCacheActiveStorageBonus(ctx context.Context, userID i
 	if err != nil {
 		return nil, stacktrace.Propagate(err, "")
 	}
-	c.UserCache.SetBonus(userID, bonus)
-	return bonus, nil
+
+	return bonus, c.UserCache.SetBonus(ctx, userID, bonus)
 }

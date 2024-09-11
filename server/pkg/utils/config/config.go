@@ -28,14 +28,17 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ente-io/stacktrace"
 	"github.com/spf13/viper"
 )
 
 var configDefaults = map[string]any{
-	"credentials-file": "credentials.yaml",
-	"log-format":       "json",
+	"credentials-file":        "credentials.yaml",
+	"log-format":              "json",
+	"cache.type":              "memory",
+	"cache.defaultExpiration": 1 * time.Minute,
 }
 
 func ConfigureViper(environment string) error {
